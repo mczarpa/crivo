@@ -1,0 +1,263 @@
+# -*- coding: utf-8 -*-
+"""
+Busca em bases academicas GRATUITAS para o Crivo. Cada funcao consulta uma base
+real e devolve uma lista de registros NORMALIZADOS (mesmo formato de dict):
+
+    {fonte, doi, titulo, autores[list], ano, revista, resumo, url, keywords[list]}
+
+Bases: PubMed (E-utilities), Europe PMC, Crossref, Semantic Scholar.
+Nada de dado inventado — so o que a API devolve. Falha de rede/limite retorna
+lista vazia + registra o aviso em `ULTIMO_ERRO` (nao derruba o app).
+
+Boa cidadania: manda tool/email (pool 'polite'), timeout curto, pausa entre
+chamadas. Configure o e-mail em EMAIL_CONTATO (usado por PubMed e Crossref).
+"""
+import html
+import re
+import time
+import xml.etree.ElementTree as ET
+
+import requests
+
+EMAIL_CONTATO = "ame.psiquiatria@example.org"   # troque pelo e-mail institucional
+FERRAMENTA = "CrivoAME"
+TIMEOUT = 25
+ULTIMO_ERRO = {}   # base -> mensagem do ultimo erro
+
+
+def _limpar(txt) -> str:
+    if not txt:
+        return ''
+    txt = re.sub(r'<[^>]+>', ' ', str(txt))          # tira tags (JATS/HTML)
+    txt = html.unescape(txt)
+    return re.sub(r'\s+', ' ', txt).strip()
+
+
+def _norm_titulo(t) -> str:
+    return re.sub(r'[^a-z0-9]', '', (t or '').lower())[:80]
+
+
+def chave_dedup(reg) -> str:
+    doi = (reg.get('doi') or '').lower().strip()
+    return 'doi:' + doi if doi else 't:' + _norm_titulo(reg.get('titulo'))
+
+
+# ============================ PubMed ============================
+def buscar_pubmed(query, limite=25) -> list:
+    base = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
+    comum = {"db": "pubmed", "tool": FERRAMENTA, "email": EMAIL_CONTATO}
+    try:
+        r = requests.get(f"{base}/esearch.fcgi", timeout=TIMEOUT, params={
+            **comum, "term": query, "retmax": limite, "retmode": "json", "sort": "relevance"})
+        r.raise_for_status()
+        ids = r.json().get("esearchresult", {}).get("idlist", [])
+        if not ids:
+            return []
+        time.sleep(0.34)
+        rf = requests.get(f"{base}/efetch.fcgi", timeout=TIMEOUT, params={
+            **comum, "id": ",".join(ids), "retmode": "xml", "rettype": "abstract"})
+        rf.raise_for_status()
+        return _parse_pubmed_xml(rf.text)
+    except Exception as e:
+        ULTIMO_ERRO['pubmed'] = str(e)
+        return []
+
+
+def _parse_pubmed_xml(xml_txt) -> list:
+    out = []
+    try:
+        raiz = ET.fromstring(xml_txt)
+    except ET.ParseError as e:
+        ULTIMO_ERRO['pubmed'] = f'XML: {e}'
+        return out
+    for art in raiz.findall('.//PubmedArticle'):
+        titulo = _limpar(''.join(art.find('.//ArticleTitle').itertext())) if art.find('.//ArticleTitle') is not None else ''
+        partes = [_limpar(''.join(ab.itertext())) for ab in art.findall('.//Abstract/AbstractText')]
+        resumo = ' '.join(p for p in partes if p)
+        ano = ''
+        y = art.find('.//JournalIssue/PubDate/Year')
+        if y is not None and y.text:
+            ano = y.text
+        else:
+            md = art.find('.//JournalIssue/PubDate/MedlineDate')
+            if md is not None and md.text:
+                m = re.search(r'\d{4}', md.text)
+                ano = m.group(0) if m else ''
+        revista = ''
+        jt = art.find('.//Journal/Title')
+        if jt is not None and jt.text:
+            revista = jt.text
+        autores = []
+        for a in art.findall('.//AuthorList/Author'):
+            sob = a.find('LastName'); ini = a.find('Initials')
+            if sob is not None and sob.text:
+                autores.append((sob.text + ' ' + (ini.text if ini is not None and ini.text else '')).strip())
+        doi = ''
+        for aid in art.findall('.//ArticleIdList/ArticleId'):
+            if aid.get('IdType') == 'doi' and aid.text:
+                doi = aid.text.strip()
+        pmid_el = art.find('.//PMID')
+        pmid = pmid_el.text if pmid_el is not None else ''
+        kws = [_limpar(k.text) for k in art.findall('.//KeywordList/Keyword') if k.text]
+        reg = {'fonte': 'PubMed', 'doi': doi, 'titulo': titulo, 'autores': autores,
+               'ano': ano, 'revista': revista, 'resumo': resumo,
+               'url': f'https://pubmed.ncbi.nlm.nih.gov/{pmid}/' if pmid else '',
+               'keywords': kws}
+        if titulo:
+            out.append(reg)
+    return out
+
+
+# ============================ Europe PMC ============================
+def buscar_europepmc(query, limite=25) -> list:
+    url = "https://www.ebi.ac.uk/europepmc/webservices/rest/search"
+    try:
+        r = requests.get(url, timeout=TIMEOUT, params={
+            "query": query, "format": "json", "resultType": "core", "pageSize": limite})
+        r.raise_for_status()
+        res = r.json().get("resultList", {}).get("result", [])
+    except Exception as e:
+        ULTIMO_ERRO['europepmc'] = str(e)
+        return []
+    out = []
+    for it in res:
+        autores = []
+        for a in (it.get('authorList', {}) or {}).get('author', []) or []:
+            nome = a.get('fullName') or a.get('lastName') or ''
+            if nome:
+                autores.append(nome)
+        kw = (it.get('keywordList', {}) or {}).get('keyword', []) or []
+        doi = it.get('doi', '') or ''
+        pmid = it.get('pmid', '')
+        url_art = ''
+        if doi:
+            url_art = 'https://doi.org/' + doi
+        elif pmid:
+            url_art = f'https://pubmed.ncbi.nlm.nih.gov/{pmid}/'
+        reg = {'fonte': 'Europe PMC', 'doi': doi, 'titulo': _limpar(it.get('title', '')),
+               'autores': autores, 'ano': str(it.get('pubYear', '') or ''),
+               'revista': (it.get('journalInfo', {}) or {}).get('journal', {}).get('title', '')
+                          or it.get('journalTitle', ''),
+               'resumo': _limpar(it.get('abstractText', '')), 'url': url_art,
+               'keywords': [_limpar(k) for k in kw]}
+        if reg['titulo']:
+            out.append(reg)
+    return out
+
+
+# ============================ Crossref ============================
+def buscar_crossref(query, limite=25) -> list:
+    url = "https://api.crossref.org/works"
+    try:
+        r = requests.get(url, timeout=TIMEOUT, params={
+            "query": query, "rows": limite, "mailto": EMAIL_CONTATO,
+            "select": "DOI,title,author,issued,container-title,abstract,URL,subject"})
+        r.raise_for_status()
+        itens = r.json().get("message", {}).get("items", [])
+    except Exception as e:
+        ULTIMO_ERRO['crossref'] = str(e)
+        return []
+    out = []
+    for it in itens:
+        titulo = _limpar(' '.join(it.get('title', []) or []))
+        if not titulo:
+            continue
+        autores = []
+        for a in it.get('author', []) or []:
+            nome = (a.get('given', '') + ' ' + a.get('family', '')).strip()
+            if nome:
+                autores.append(nome)
+        ano = ''
+        try:
+            ano = str(it['issued']['date-parts'][0][0])
+        except Exception:
+            ano = ''
+        reg = {'fonte': 'Crossref', 'doi': it.get('DOI', '') or '', 'titulo': titulo,
+               'autores': autores, 'ano': ano,
+               'revista': _limpar(' '.join(it.get('container-title', []) or [])),
+               'resumo': _limpar(it.get('abstract', '')), 'url': it.get('URL', '') or '',
+               'keywords': it.get('subject', []) or []}
+        out.append(reg)
+    return out
+
+
+# ============================ Semantic Scholar ============================
+def buscar_semanticscholar(query, limite=25) -> list:
+    url = "https://api.semanticscholar.org/graph/v1/paper/search"
+    campos = "title,abstract,year,authors,externalIds,venue,url"
+    try:
+        r = requests.get(url, timeout=TIMEOUT, params={
+            "query": query, "limit": min(limite, 100), "fields": campos})
+        if r.status_code == 429:
+            ULTIMO_ERRO['semanticscholar'] = 'limite de requisicoes (429) — tente de novo em instantes'
+            return []
+        r.raise_for_status()
+        dados = r.json().get("data", []) or []
+    except Exception as e:
+        ULTIMO_ERRO['semanticscholar'] = str(e)
+        return []
+    out = []
+    for it in dados:
+        autores = [a.get('name', '') for a in (it.get('authors') or []) if a.get('name')]
+        doi = ((it.get('externalIds') or {}).get('DOI') or '')
+        reg = {'fonte': 'Semantic Scholar', 'doi': doi, 'titulo': _limpar(it.get('title', '')),
+               'autores': autores, 'ano': str(it.get('year', '') or ''),
+               'revista': it.get('venue', '') or '', 'resumo': _limpar(it.get('abstract', '')),
+               'url': it.get('url', '') or (('https://doi.org/' + doi) if doi else ''),
+               'keywords': []}
+        if reg['titulo']:
+            out.append(reg)
+    return out
+
+
+BASES = {
+    'pubmed': buscar_pubmed,
+    'europepmc': buscar_europepmc,
+    'crossref': buscar_crossref,
+    'semanticscholar': buscar_semanticscholar,
+}
+NOMES_BASES = {'pubmed': 'PubMed', 'europepmc': 'Europe PMC',
+               'crossref': 'Crossref', 'semanticscholar': 'Semantic Scholar'}
+
+
+def buscar_todas(query_por_base: dict, limite=25) -> dict:
+    """query_por_base: {'pubmed': 'string', ...}. Roda as bases pedidas, deduplica
+    (por DOI ou titulo normalizado) e marca `dup=1` a partir da 2a ocorrencia.
+    Retorna {'registros': [...], 'por_base': {base: n_brutos}, 'erros': {...}}."""
+    ULTIMO_ERRO.clear()
+    vistos = set()
+    registros = []
+    por_base = {}
+    for base, query in query_por_base.items():
+        if not query or base not in BASES:
+            continue
+        brutos = BASES[base](query, limite)
+        por_base[base] = len(brutos)
+        for reg in brutos:
+            ch = chave_dedup(reg)
+            reg['chave_dedup'] = ch
+            reg['dup'] = 1 if ch in vistos else 0
+            vistos.add(ch)
+            registros.append(reg)
+        time.sleep(0.34)
+    return {'registros': registros, 'por_base': por_base, 'erros': dict(ULTIMO_ERRO)}
+
+
+if __name__ == '__main__':
+    # smoke test rapido contra as APIs reais
+    q = "clozapine AND agranulocytosis monitoring"
+    qs = {
+        'pubmed': q,
+        'europepmc': q,
+        'crossref': "clozapine agranulocytosis monitoring",
+        'semanticscholar': "clozapine agranulocytosis monitoring",
+    }
+    res = buscar_todas(qs, limite=5)
+    print("por_base (brutos):", res['por_base'])
+    print("erros:", res['erros'])
+    print("total registros:", len(res['registros']),
+          "| unicos:", sum(1 for r in res['registros'] if not r['dup']))
+    for r in res['registros'][:6]:
+        print(f"  [{r['fonte']}] {r['ano']} | doi={r['doi'][:40]!r} dup={r['dup']}")
+        print(f"      {r['titulo'][:90]}")
+        print(f"      resumo: {len(r['resumo'])} chars | autores: {len(r['autores'])}")
