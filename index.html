@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+<meta charset="utf-8">
+<title>Crivo</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>
+:root{
+  --paper:#F1F4EE;--surface:#FBFCF9;--surface-2:#E7ECE2;--raise:#FFFFFF;
+  --ink:#15201B;--ink-soft:#33443B;--muted:#5C6C62;--faint:#8A978C;
+  --line:#D6DECF;--line-strong:#C2CCB8;
+  --accent:#A97B22;--accent-ink:#7C5716;--pine:#101C16;--on-pine:#EBF0E6;
+  --inc:#3B7A50;--exc:#AF473A;--may:#8A5A78;
+  --inc-soft:#E1EEDF;--exc-soft:#F6E2DE;--may-soft:#EFE4EC;
+  --gold-glow:rgba(169,123,34,.16);
+  --shadow:0 1px 2px rgba(21,32,27,.05),0 10px 30px rgba(21,32,27,.07);
+  --serif:'Iowan Old Style','Palatino Linotype',Palatino,'Book Antiqua',Georgia,serif;
+  --sans:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,system-ui,sans-serif;
+  --mono:ui-monospace,'SF Mono','Cascadia Code',Consolas,monospace;
+}
+:root[data-theme="dark"]{
+  --paper:#0E1611;--surface:#141F19;--surface-2:#1C2A22;--raise:#1A271F;
+  --ink:#EAF0E7;--ink-soft:#C3D0C4;--muted:#94A497;--faint:#6C7C71;
+  --line:#26332B;--line-strong:#33453A;
+  --accent:#D6A94E;--accent-ink:#F0CE86;--pine:#0A120D;--on-pine:#EBF0E6;
+  --inc:#5DBE84;--exc:#E27C6E;--may:#C495B4;
+  --inc-soft:#132A1D;--exc-soft:#2E1A17;--may-soft:#271A24;
+  --gold-glow:rgba(214,169,78,.14);
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 12px 34px rgba(0,0,0,.42);
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --paper:#0E1611;--surface:#141F19;--surface-2:#1C2A22;--raise:#1A271F;
+  --ink:#EAF0E7;--ink-soft:#C3D0C4;--muted:#94A497;--faint:#6C7C71;
+  --line:#26332B;--line-strong:#33453A;
+  --accent:#D6A94E;--accent-ink:#F0CE86;--pine:#0A120D;--on-pine:#EBF0E6;
+  --inc:#5DBE84;--exc:#E27C6E;--may:#C495B4;
+  --inc-soft:#132A1D;--exc-soft:#2E1A17;--may-soft:#271A24;
+  --gold-glow:rgba(214,169,78,.14);
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 12px 34px rgba(0,0,0,.42);
+}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:16px;line-height:1.55;-webkit-font-smoothing:antialiased}
+h1,h2,h3{font-family:var(--serif);font-weight:600;margin:0;letter-spacing:-.01em}
+a{color:var(--accent-ink);text-decoration:none}
+button{font-family:inherit;cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:5px}
+.wrap{max-width:1000px;margin:0 auto;padding:0 22px}
+.mono{font-family:var(--mono)}
+header{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--paper) 84%,transparent);backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}
+.head-in{display:flex;align-items:center;gap:12px;height:62px;max-width:1000px;margin:0 auto;padding:0 22px}
+.brand{display:flex;align-items:center;gap:10px;font-family:var(--serif);font-size:21px;font-weight:600}
+.brand svg{width:28px;height:28px}
+.sp{flex:1}
+.tbtn{background:none;border:1px solid var(--line-strong);border-radius:9px;color:var(--muted);padding:7px 12px;font-size:13px;font-weight:600}
+.tbtn:hover{color:var(--ink)}
+
+.hero{padding:44px 0 8px}
+.eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--accent-ink);font-weight:600}
+.hero h1{font-size:clamp(2rem,1.4rem+2.4vw,3rem);line-height:1.05;margin:14px 0 0;max-width:16ch}
+.hero h1 em{font-style:italic;color:var(--accent-ink)}
+.searchbox{margin-top:26px;background:var(--surface);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:16px}
+.sf{display:flex;gap:10px;align-items:center}
+.sf input{flex:1;background:var(--surface-2);border:1px solid var(--line);border-radius:11px;padding:14px 16px;font-size:16px;color:var(--ink)}
+.sf input:focus{outline:none;border-color:var(--accent);background:var(--raise)}
+.btn{display:inline-flex;align-items:center;gap:8px;justify-content:center;font-weight:600;font-size:15px;border-radius:11px;padding:14px 20px;border:1px solid transparent;background:var(--accent);color:#fff;box-shadow:0 8px 22px var(--gold-glow)}
+.btn:hover{background:var(--accent-ink)}
+.btn:disabled{opacity:.55;cursor:default}
+.opts{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:13px}
+.chk{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;color:var(--muted);font-weight:600;border:1px solid var(--line);border-radius:999px;padding:6px 12px;cursor:pointer;user-select:none;background:var(--raise)}
+.chk[aria-pressed="true"]{color:var(--accent-ink);border-color:var(--accent);background:var(--gold-glow)}
+.chk i{width:7px;height:7px;border-radius:50%;background:currentColor;opacity:.6}
+.hint{font-size:12.5px;color:var(--faint);margin-top:10px}
+
+.desc{margin-top:16px;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px 16px;display:none}
+.desc.show{display:block}
+.desc .lbl{font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--accent-ink);font-weight:700}
+.desc .chips{display:flex;gap:7px;flex-wrap:wrap;margin-top:9px}
+.mchip{font-family:var(--mono);font-size:12px;padding:5px 10px;border-radius:8px;background:var(--surface-2);color:var(--ink-soft);border:1px solid var(--line)}
+
+.summary{display:flex;gap:20px;flex-wrap:wrap;align-items:center;margin:26px 0 6px;padding-bottom:14px;border-bottom:1px solid var(--line)}
+.summary .big{font-family:var(--serif);font-size:24px;font-weight:600}
+.summary .k{font-size:13px;color:var(--muted)}
+.filters{display:flex;gap:6px;margin-left:auto;flex-wrap:wrap}
+.fbtn{border:1px solid var(--line);background:var(--surface);color:var(--muted);font-size:12.5px;font-weight:600;padding:6px 12px;border-radius:999px}
+.fbtn[aria-current="true"]{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.warn{font-size:12.5px;color:var(--exc);margin-top:8px}
+
+.results{margin:16px 0 80px;display:flex;flex-direction:column;gap:12px}
+.card{background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--line-strong);border-radius:13px;padding:16px 18px;box-shadow:var(--shadow)}
+.card.s-inc{border-left-color:var(--inc)} .card.s-exc{border-left-color:var(--exc);opacity:.72} .card.s-may{border-left-color:var(--may)}
+.card .badge{font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);font-weight:700}
+.card h3{font-size:17.5px;line-height:1.32;margin:6px 0 6px}
+.card .meta{font-size:13px;color:var(--muted)}
+.card .meta .doi{font-family:var(--mono);font-size:11.5px}
+.card .abs{font-size:14px;color:var(--ink-soft);line-height:1.55;margin-top:10px;max-height:0;overflow:hidden;transition:max-height .25s ease}
+.card .abs.open{max-height:1200px}
+.card .absbtn{background:none;border:none;color:var(--accent-ink);font-weight:600;font-size:12.5px;padding:6px 0 0}
+.card .row{display:flex;gap:8px;align-items:center;margin-top:13px;flex-wrap:wrap}
+.dec{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line-strong);background:var(--surface);color:var(--ink-soft);font-weight:600;font-size:13px;padding:7px 13px;border-radius:9px}
+.dec.inc.on,.dec.inc:hover{background:var(--inc);border-color:var(--inc);color:#fff}
+.dec.exc.on,.dec.exc:hover{background:var(--exc);border-color:var(--exc);color:#fff}
+.dec.may.on,.dec.may:hover{background:var(--may);border-color:var(--may);color:#fff}
+.crit{margin-top:14px;border:1px solid var(--line);border-radius:12px;background:var(--surface);padding:0 14px}
+.crit summary{cursor:pointer;padding:12px 2px;font-size:13.5px;font-weight:600;color:var(--ink-soft);list-style:none}
+.crit summary::-webkit-details-marker{display:none}
+.crit[open] summary{border-bottom:1px solid var(--line)}
+.critgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:12px 0 14px}
+.critgrid label{display:flex;flex-direction:column;gap:6px;font-size:12px;font-weight:600;color:var(--muted)}
+.critgrid textarea{font-family:var(--sans);font-size:13.5px;border:1px solid var(--line);border-radius:9px;padding:9px 11px;background:var(--surface-2);color:var(--ink);resize:vertical}
+.critgrid textarea:focus{outline:none;border-color:var(--accent);background:var(--raise)}
+.rationale{font-size:12.5px;color:var(--ink-soft);margin-top:11px;padding-left:11px;border-left:2px solid var(--accent);line-height:1.5}
+.rationale b{font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--accent-ink);display:block;margin-bottom:2px;font-weight:700}
+.fbtn.ia{background:var(--gold-glow);border-color:var(--accent);color:var(--accent-ink)}
+.fbtn.ia:disabled{opacity:.6;cursor:default}
+@media(max-width:620px){.critgrid{grid-template-columns:1fr}}
+.empty{text-align:center;color:var(--muted);padding:60px 20px}
+.spin{width:22px;height:22px;border:3px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:sp 1s linear infinite;display:inline-block;vertical-align:-5px}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media(max-width:620px){.sf{flex-direction:column;align-items:stretch}.btn{width:100%}}
+</style>
+</head>
+<body>
+<header>
+  <div class="head-in">
+    <div class="brand">
+      <svg viewBox="0 0 32 32" fill="none"><circle cx="16" cy="16" r="14.2" stroke="var(--accent)" stroke-width="1.4" opacity=".5"/><path d="M7 11h18M9 16h14M12 21h8M14.5 25h3" stroke="var(--accent)" stroke-width="1.7" stroke-linecap="round"/><circle cx="16" cy="16" r="3.1" fill="var(--accent)"/></svg>
+      Crivo
+    </div>
+    <div class="sp"></div>
+    <span class="tbtn" id="iaBadge" title="Motor de IA" style="cursor:default">IA…</span>
+    <button class="tbtn" id="theme">Tema</button>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="hero">
+    <span class="eyebrow">Revisão de literatura em saúde</span>
+    <h1>De <em>milhares</em> de artigos ao punhado que importa.</h1>
+    <div class="searchbox">
+      <div class="sf">
+        <input id="q" type="search" placeholder="Digite o tema — ex.: abandono de tratamento em saúde mental" autocomplete="off">
+        <button class="btn" id="go">Peneirar</button>
+      </div>
+      <div class="opts" id="baseopts"></div>
+      <div class="opts">
+        <span class="chk" id="descToggle" aria-pressed="true" role="button" tabindex="0"><i></i>Expandir descritores (MeSH)</span>
+        <span class="hint">Traduz o tema para termos controlados e busca por eles também.</span>
+      </div>
+    </div>
+    <div class="desc" id="descPanel">
+      <span class="lbl">Descritores MeSH aplicados</span>
+      <div class="chips" id="descChips"></div>
+    </div>
+    <details class="crit" id="critPanel">
+      <summary>Critérios de triagem (opcional) — ajudam a IA a decidir</summary>
+      <div class="critgrid">
+        <label>Incluir (um por linha)<textarea id="critInc" rows="3" placeholder="ex.: adultos&#10;desfecho clínico relevante"></textarea></label>
+        <label>Excluir (um por linha)<textarea id="critExc" rows="3" placeholder="ex.: população pediátrica&#10;sem grupo de comparação"></textarea></label>
+      </div>
+    </details>
+  </section>
+
+  <div id="status"></div>
+  <section class="results" id="results"></section>
+</main>
+
+<script>
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+const state={bases:{}, active:new Set(), decisoes:{}, motivos:{}, tema:'', filtro:'todas', usarDesc:true, dados:[], iaBusy:false, iaOk:false};
+
+async function iaStatus(){
+  try{const r=await fetch('/api/ia-status');const d=await r.json();const b=$('#iaBadge');
+    state.iaOk=!!d.ok;
+    b.textContent='IA: '+(d.provedor==='ollama'?'Ollama':d.provedor==='gemini'?'Gemini':d.provedor==='groq'?'Groq':d.provedor)+(d.ok?'':' (configurar)');
+    b.title=d.info||'';}catch(e){state.iaOk=false;}
+}
+
+/* tema */
+$('#theme').onclick=()=>{const r=document.documentElement;let c=r.getAttribute('data-theme');if(!c)c=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';r.setAttribute('data-theme',c==='dark'?'light':'dark');};
+
+/* descritores toggle */
+const dt=$('#descToggle');
+function setDesc(v){state.usarDesc=v;dt.setAttribute('aria-pressed',v);}
+dt.onclick=()=>setDesc(!state.usarDesc);
+dt.onkeydown=e=>{if(e.key===' '||e.key==='Enter'){e.preventDefault();setDesc(!state.usarDesc);}};
+
+/* carregar bases */
+async function carregarBases(){
+  const r=await fetch('/api/bases');const bs=await r.json();
+  const box=$('#baseopts');box.innerHTML='';
+  bs.forEach(b=>{
+    if(b.id==='lilacs')return; // 403 na BVS por enquanto
+    state.active.add(b.id);
+    const el=document.createElement('span');
+    el.className='chk';el.setAttribute('aria-pressed','true');el.setAttribute('role','button');el.tabIndex=0;
+    el.innerHTML='<i></i>'+b.nome;
+    el.onclick=()=>{const on=el.getAttribute('aria-pressed')==='true';el.setAttribute('aria-pressed',!on);on?state.active.delete(b.id):state.active.add(b.id);};
+    box.appendChild(el);
+  });
+}
+
+function esc(s){return (s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function autores(a){if(!a||!a.length)return '';if(a.length<=3)return a.join(', ');return a.slice(0,3).join(', ')+' et al.';}
+
+async function buscar(){
+  const termo=$('#q').value.trim();
+  if(!termo)return;
+  const go=$('#go');go.disabled=true;
+  $('#status').innerHTML='<div class="empty"><span class="spin"></span><p>Peneirando as bases…</p></div>';
+  $('#results').innerHTML='';$('#descPanel').classList.remove('show');
+  try{
+    const r=await fetch('/api/buscar',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({termo,bases:[...state.active],limite:20,usar_descritores:state.usarDesc})});
+    const d=await r.json();
+    state.dados=d.registros||[];state.decisoes={};state.motivos={};state.tema=termo;
+    // descritores
+    const mesh=(d.descritores&&d.descritores.mesh)||[];
+    if(mesh.length){$('#descChips').innerHTML=mesh.map(m=>'<span class="mchip">'+esc(m)+'</span>').join('');$('#descPanel').classList.add('show');}
+    render(d);
+  }catch(e){
+    $('#status').innerHTML='<div class="empty">Não consegui buscar agora. '+esc(e.message||e)+'</div>';
+  }
+  go.disabled=false;
+}
+
+function render(d){
+  const total=state.dados.length, unicos=state.dados.filter(x=>!x.dup).length;
+  const porBase=Object.entries(d.por_base||{}).map(([k,v])=>k+' '+v).join(' · ');
+  let warn='';
+  const erros=d.erros||{};if(Object.keys(erros).length)warn='<div class="warn">Avisos: '+Object.entries(erros).map(([k,v])=>esc(k)+' ('+esc(String(v).slice(0,60))+')').join('; ')+'</div>';
+  $('#status').innerHTML=
+    '<div class="summary"><div><span class="big">'+unicos+'</span> <span class="k">artigos únicos ('+total+' brutos)</span></div>'+
+    '<div class="filters" id="filters">'+
+      (state.iaOk?'<button class="fbtn ia" id="triarIA">Triar pendentes com IA</button>':'')+
+      ['todas','pendente','incluir','talvez','excluir'].map(f=>'<button class="fbtn" data-f="'+f+'"'+(state.filtro===f?' aria-current="true"':'')+'>'+f+'</button>').join('')+
+    '</div></div>'+warn+
+    '<div class="hint mono">bases: '+esc(porBase)+' · query: '+esc(d.query||'')+'</div>';
+  $$('#filters .fbtn[data-f]').forEach(b=>b.onclick=()=>{state.filtro=b.dataset.f;render(d);});
+  const tb=$('#triarIA');if(tb){tb.disabled=state.iaBusy;tb.onclick=()=>triarIA(d);}
+  desenhar();
+}
+
+function statusDe(r){return state.decisoes[r.chave_dedup]||'pendente';}
+function desenhar(){
+  const R=$('#results');
+  let lista=state.dados.filter(r=>!r.dup);
+  if(state.filtro!=='todas')lista=lista.filter(r=>statusDe(r)===state.filtro);
+  if(!lista.length){R.innerHTML='<div class="empty">Nada aqui ainda. Faça uma busca ou troque o filtro.</div>';return;}
+  R.innerHTML=lista.map((r,i)=>{
+    const st=statusDe(r);
+    const rat=state.motivos[r.chave_dedup];
+    const meta=[autores(r.autores),r.ano,r.revista,r.fonte].filter(Boolean).map(esc).join(' · ');
+    const doi=r.doi?' · <a class="doi" href="https://doi.org/'+esc(r.doi)+'" target="_blank" rel="noopener">doi:'+esc(r.doi)+'</a>':'';
+    const abs=r.resumo?'<div class="abs" id="a'+i+'">'+esc(r.resumo)+'</div><button class="absbtn" data-a="'+i+'">Resumo ▾</button>':'';
+    return '<article class="card s-'+({incluir:'inc',excluir:'exc',talvez:'may'}[st]||'')+'">'+
+      '<div class="badge">'+esc(r.fonte)+'</div>'+
+      '<h3>'+esc(r.titulo)+'</h3>'+
+      '<div class="meta">'+meta+doi+'</div>'+abs+
+      '<div class="row">'+
+        '<button class="dec inc'+(st==='incluir'?' on':'')+'" data-d="incluir" data-k="'+esc(r.chave_dedup)+'">Incluir</button>'+
+        '<button class="dec may'+(st==='talvez'?' on':'')+'" data-d="talvez" data-k="'+esc(r.chave_dedup)+'">Talvez</button>'+
+        '<button class="dec exc'+(st==='excluir'?' on':'')+'" data-d="excluir" data-k="'+esc(r.chave_dedup)+'">Excluir</button>'+
+      '</div>'+(rat&&rat.motivo?'<div class="rationale"><b>IA'+(rat.criterio?' · '+esc(rat.criterio):'')+'</b>'+esc(rat.motivo)+'</div>':'')+'</article>';
+  }).join('');
+  $$('#results .absbtn').forEach(b=>b.onclick=()=>$('#a'+b.dataset.a).classList.toggle('open'));
+  $$('#results .dec').forEach(b=>b.onclick=()=>{const k=b.dataset.k;state.decisoes[k]=state.decisoes[k]===b.dataset.d?'pendente':b.dataset.d;desenhar();});
+}
+
+async function triarIA(d){
+  if(state.iaBusy)return;
+  const inc=($('#critInc').value||'').split('\n').map(s=>s.trim()).filter(Boolean);
+  const exc=($('#critExc').value||'').split('\n').map(s=>s.trim()).filter(Boolean);
+  const pend=state.dados.filter(r=>!r.dup && statusDe(r)==='pendente');
+  const tb=$('#triarIA');
+  if(!pend.length){if(tb){tb.textContent='Nada pendente';setTimeout(()=>{try{tb.textContent='Triar pendentes com IA';}catch(e){}},1600);}return;}
+  state.iaBusy=true;if(tb)tb.disabled=true;
+  for(let i=0;i<pend.length;i++){
+    const r=pend[i];
+    if(tb)tb.textContent='Triando '+(i+1)+'/'+pend.length+'…';
+    try{
+      const resp=await fetch('/api/triar',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({ref:{titulo:r.titulo,resumo:r.resumo},criterios_inc:inc,criterios_exc:exc,pico:{desfecho:state.tema}})});
+      const dd=await resp.json();
+      state.decisoes[r.chave_dedup]=dd.decisao||'pendente';
+      state.motivos[r.chave_dedup]={motivo:dd.motivo||'',criterio:dd.criterio||''};
+      desenhar();
+    }catch(e){}
+  }
+  state.iaBusy=false;
+  render(d);
+}
+
+$('#go').onclick=buscar;
+$('#q').addEventListener('keydown',e=>{if(e.key==='Enter')buscar();});
+carregarBases();
+iaStatus();
+</script>
+</body>
+</html>

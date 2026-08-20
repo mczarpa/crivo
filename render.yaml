@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: crivo
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      # Para ligar a IA na nuvem, adicione UMA destas em Environment (nao commite a chave):
+      # - key: GOOGLE_API_KEY   (Google Gemini)
+      # - key: GROQ_API_KEY     (Groq)
