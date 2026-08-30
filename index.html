@@ -201,6 +201,7 @@ body.hasbar{padding-bottom:72px}
       <div><span class="eyebrow">O trabalho</span><h2>Escrever o artigo</h2></div>
       <div class="refs-tools">
         <select class="sel" id="estrutura" title="Estrutura do artigo"></select>
+        <select class="sel" id="revista" title="Revista-alvo (aplica as normas)"></select>
         <button class="btn" id="genSintese">Escrever com IA</button>
       </div>
     </div>
@@ -399,14 +400,28 @@ function estruturaAtual(){
   const id=$('#estrutura').value;
   return (state.estruturas||[]).find(e=>e.id===id)||(state.estruturas||[])[0];
 }
+async function carregarRevistas(){
+  try{const r=await fetch('/api/revistas');const rs=await r.json();state.revistas=rs;
+    $('#revista').innerHTML=rs.map(e=>'<option value="'+e.id+'">'+esc(e.nome+(e.qualis?' · '+e.qualis:''))+'</option>').join('');
+  }catch(e){}
+}
+function revistaAtual(){
+  const id=$('#revista').value;
+  return (state.revistas||[]).find(e=>e.id===id);
+}
 async function gerarSintese(){
   const inc=incluidos();const out=$('#trabOut');$('#trabPanel').hidden=false;
   if(!inc.length){out.textContent='Inclua artigos primeiro (ou use "Fazer tudo com IA").';$('#trabActions').hidden=true;return false;}
   const est=estruturaAtual();
   if(!est){out.textContent='Carregando estruturas… tente de novo em instantes.';return false;}
+  const rev=revistaAtual();
+  const regrasRev=(rev&&rev.id!=='generico'&&rev.regras)?rev.regras:'';
+  if(rev&&rev.estilo)$('#estilo').value=rev.estilo;
   const btn=$('#genSintese');btn.disabled=true;$('#trabActions').hidden=true;
   const titulo=(state.tema||'').trim();
-  const partes=[]; if(titulo && est.secoes.length>1)partes.push('# '+titulo+'\n');
+  const partes=[];
+  if(titulo && est.secoes.length>1)partes.push('# '+titulo+'\n');
+  if(regrasRev && est.secoes.length>1)partes.push('*Formatado para: '+rev.nome+(rev.qualis?' ('+rev.qualis+')':'')+' — confira as Instruções aos Autores da revista antes de submeter.*\n');
   const critInc=(($('#critInc')&&$('#critInc').value)||'').trim();
   const critExc=(($('#critExc')&&$('#critExc').value)||'').trim();
   const metodoCtx='Contexto real desta revisão — Tema: '+(titulo||'(não informado)')
@@ -421,6 +436,7 @@ async function gerarSintese(){
       out.scrollTop=out.scrollHeight;
       let instr=sec.instrucao||'';
       if(/m[ée]todo/i.test(sec.titulo))instr=(instr?instr+' ':'')+metodoCtx;
+      if(regrasRev)instr=(instr?instr+' ':'')+'Siga as normas da revista-alvo: '+regrasRev;
       let dd={};
       try{
         const r=await fetch('/api/rascunhar',{method:'POST',headers:{'Content-Type':'application/json'},
@@ -479,6 +495,7 @@ $('#q').addEventListener('keydown',e=>{if(e.key==='Enter')buscar();});
 carregarBases();
 carregarEstilos();
 carregarEstruturas();
+carregarRevistas();
 iaStatus();
 </script>
 </body>

@@ -92,6 +92,46 @@ def estruturas():
     return ESTRUTURAS
 
 
+# Revistas-alvo: aplicam as normas da revista (estilo de ref., resumo, descritores).
+# A maioria das revistas de enfermagem BR usa Vancouver (citacao numerica [n]),
+# que casa com a ancoragem do Crivo. Verificar sempre as "Instrucoes aos autores"
+# vigentes da revista antes de submeter.
+_REGRA_BASE = ("Referencias no estilo Vancouver (citacao numerica [n]). "
+               "Resumo estruturado em ~150 palavras com Objetivo, Metodo(s), "
+               "Resultados e Conclusao. Incluir 3 a 5 descritores DeCS/MeSH ao "
+               "final do resumo. Portugues cientifico, impessoal (evitar 1a pessoa). "
+               "Titulo conciso. ")
+
+REVISTAS = [
+    {"id": "generico", "nome": "Genérico (sem revista específica)", "qualis": "", "estilo": "", "regras": ""},
+    {"id": "reben", "nome": "Rev. Brasileira de Enfermagem (REBEn)", "qualis": "Qualis A1", "estilo": "vancouver",
+     "regras": _REGRA_BASE + "Padrao REBEn/IMRAD; destacar contribuicoes para a enfermagem."},
+    {"id": "texto_contexto", "nome": "Texto & Contexto Enfermagem", "qualis": "Qualis A1", "estilo": "vancouver",
+     "regras": _REGRA_BASE + "Deixar clara a questao norteadora e o metodo de revisao."},
+    {"id": "rlae", "nome": "Rev. Latino-Americana de Enfermagem (RLAE)", "qualis": "Qualis A1", "estilo": "vancouver",
+     "regras": _REGRA_BASE + "Enfatizar implicacoes para a pratica de enfermagem."},
+    {"id": "reeusp", "nome": "Rev. Esc. Enfermagem da USP (REEUSP)", "qualis": "Qualis A1", "estilo": "vancouver",
+     "regras": _REGRA_BASE + "Estrutura IMRAD."},
+    {"id": "acta", "nome": "Acta Paulista de Enfermagem", "qualis": "Qualis A1", "estilo": "vancouver",
+     "regras": _REGRA_BASE + "Resumo com Objetivo, Metodos, Resultados, Conclusao."},
+    {"id": "anna_nery", "nome": "Escola Anna Nery", "qualis": "Qualis A2", "estilo": "vancouver",
+     "regras": _REGRA_BASE + "Enfase na relevancia para o cuidado."},
+    {"id": "rgenf", "nome": "Rev. Gaúcha de Enfermagem", "qualis": "Qualis A2", "estilo": "vancouver",
+     "regras": _REGRA_BASE},
+    {"id": "cogitare", "nome": "Cogitare Enfermagem", "qualis": "Qualis A3", "estilo": "vancouver",
+     "regras": _REGRA_BASE},
+    {"id": "enf_foco", "nome": "Enfermagem em Foco (COFEN)", "qualis": "Qualis B1", "estilo": "vancouver",
+     "regras": _REGRA_BASE},
+    {"id": "rbso", "nome": "Rev. Bras. Saúde Ocupacional", "qualis": "Qualis B1", "estilo": "vancouver",
+     "regras": _REGRA_BASE},
+]
+
+
+@app.get("/api/revistas")
+def revistas():
+    return REVISTAS
+
+
 @app.post("/api/referencias")
 def referencias(req: RefsReq):
     itens = [mc.formatar(r, req.estilo) for r in req.refs]
