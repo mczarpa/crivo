@@ -198,8 +198,11 @@ body.hasbar{padding-bottom:72px}
 
   <section class="refs" id="trabPanel" hidden>
     <div class="refs-head">
-      <div><span class="eyebrow">O trabalho</span><h2>Síntese da evidência</h2></div>
-      <div class="refs-tools"><button class="btn" id="genSintese">Escrever com IA</button></div>
+      <div><span class="eyebrow">O trabalho</span><h2>Escrever o artigo</h2></div>
+      <div class="refs-tools">
+        <select class="sel" id="estrutura" title="Estrutura do artigo"></select>
+        <button class="btn" id="genSintese">Escrever com IA</button>
+      </div>
     </div>
     <div class="refs-actions" id="trabActions" hidden>
       <button class="fbtn" id="copyTrab">Copiar</button>
@@ -385,19 +388,65 @@ $('#estilo').onchange=()=>{if(!$('#refsActions').hidden)gerarRefs();};
 $('#copyRefs').onclick=()=>{navigator.clipboard.writeText($('#refsOut').textContent||'').then(()=>{const b=$('#copyRefs');b.textContent='Copiado!';setTimeout(()=>b.textContent='Copiar',1500);});};
 $('#dlRefs').onclick=()=>{const bl=new Blob([$('#refsOut').textContent||''],{type:'text/plain;charset=utf-8'});const a=document.createElement('a');a.href=URL.createObjectURL(bl);a.download='referencias.txt';document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},600);};
 
-// ---- Síntese (o trabalho) + modo automático ----
+// ---- Artigo (o trabalho): escreve seção por seção seguindo a estrutura escolhida ----
+async function carregarEstruturas(){
+  try{const r=await fetch('/api/estruturas');const es=await r.json();state.estruturas=es;
+    $('#estrutura').innerHTML=es.map(e=>'<option value="'+e.id+'">'+esc(e.nome)+'</option>').join('');
+    if(es.find(e=>e.id==='sistematica'))$('#estrutura').value='sistematica';
+  }catch(e){}
+}
+function estruturaAtual(){
+  const id=$('#estrutura').value;
+  return (state.estruturas||[]).find(e=>e.id===id)||(state.estruturas||[])[0];
+}
 async function gerarSintese(){
   const inc=incluidos();const out=$('#trabOut');$('#trabPanel').hidden=false;
   if(!inc.length){out.textContent='Inclua artigos primeiro (ou use "Fazer tudo com IA").';$('#trabActions').hidden=true;return false;}
-  out.textContent='Lendo os incluídos e escrevendo a síntese (IA)…';$('#trabActions').hidden=true;
+  const est=estruturaAtual();
+  if(!est){out.textContent='Carregando estruturas… tente de novo em instantes.';return false;}
+  const btn=$('#genSintese');btn.disabled=true;$('#trabActions').hidden=true;
+  const titulo=(state.tema||'').trim();
+  const partes=[]; if(titulo && est.secoes.length>1)partes.push('# '+titulo+'\n');
+  const critInc=(($('#critInc')&&$('#critInc').value)||'').trim();
+  const critExc=(($('#critExc')&&$('#critExc').value)||'').trim();
+  const metodoCtx='Contexto real desta revisão — Tema: '+(titulo||'(não informado)')
+    +'. Bases consultadas: PubMed, Europe PMC, Crossref, Semantic Scholar.'
+    +(critInc?(' Critérios de inclusão: '+critInc.replace(/\n/g,'; ')+'.'):'')
+    +(critExc?(' Critérios de exclusão: '+critExc.replace(/\n/g,'; ')+'.'):'')
+    +' Foram incluídos '+inc.length+' estudos.';
   try{
-    const r=await fetch('/api/rascunhar',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({refs:inc,tema:state.tema,secao:'Análise crítica da evidência'})});
-    const dd=await r.json();
-    if(dd.texto){out.textContent=dd.texto;$('#trabActions').hidden=false;$('#trabHint').textContent=inc.length+' artigo(s) · síntese ancorada';return true;}
-    out.textContent='Não deu pra escrever: '+esc(dd.erro||'erro');return false;
+    for(let i=0;i<est.secoes.length;i++){
+      const sec=est.secoes[i];
+      out.textContent='✍️ Escrevendo: '+sec.titulo+' ('+(i+1)+'/'+est.secoes.length+')…\n\n'+partes.join('\n');
+      out.scrollTop=out.scrollHeight;
+      let instr=sec.instrucao||'';
+      if(/m[ée]todo/i.test(sec.titulo))instr=(instr?instr+' ':'')+metodoCtx;
+      let dd={};
+      try{
+        const r=await fetch('/api/rascunhar',{method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({refs:inc,tema:titulo,secao:sec.titulo,instrucoes:instr})});
+        dd=await r.json();
+      }catch(e){dd={erro:e.message||e};}
+      if(est.secoes.length>1)partes.push('## '+sec.titulo+'\n\n'+(dd.texto||'[não gerado: '+esc(dd.erro||'erro')+']')+'\n');
+      else partes.push(dd.texto||('Não deu pra escrever: '+esc(dd.erro||'erro')));
+      out.textContent=partes.join('\n');
+    }
+    if(est.secoes.length>1){
+      out.textContent=partes.join('\n')+'\n\n📚 Montando as referências…';
+      try{
+        const estilo=($('#estilo').value)||'vancouver';
+        const rr=await fetch('/api/referencias',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({refs:inc,estilo})});
+        const dr=await rr.json(); if(dr.texto)partes.push('## Referências\n\n'+dr.texto+'\n');
+      }catch(e){}
+    }
+    out.textContent=partes.join('\n');
+    $('#trabActions').hidden=false;
+    $('#trabHint').textContent=inc.length+' artigo(s) · '+est.nome+' · ancorado';
+    return true;
   }catch(e){out.textContent='Falha: '+esc(e.message||e);return false;}
+  finally{btn.disabled=false;}
 }
+$('#estrutura').onchange=()=>{$('#trabHint').textContent=estruturaAtual()?estruturaAtual().nome:'';};
 async function fazerTudo(d){
   if(state.iaBusy)return;state.iaBusy=true;
   const btn=$('#fazerTudo');if(btn)btn.disabled=true;
@@ -421,7 +470,7 @@ async function fazerTudo(d){
 }
 $('#genSintese').onclick=gerarSintese;
 $('#copyTrab').onclick=()=>{navigator.clipboard.writeText($('#trabOut').textContent||'').then(()=>{const b=$('#copyTrab');b.textContent='Copiado!';setTimeout(()=>b.textContent='Copiar',1500);});};
-$('#dlTrab').onclick=()=>{const bl=new Blob([$('#trabOut').textContent||''],{type:'text/plain;charset=utf-8'});const a=document.createElement('a');a.href=URL.createObjectURL(bl);a.download='sintese.txt';document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},600);};
+$('#dlTrab').onclick=()=>{const nome=((state.tema||'artigo').trim().replace(/[^\wçãõáéíóúâêô -]/gi,'').slice(0,50)||'artigo');const bl=new Blob([$('#trabOut').textContent||''],{type:'text/markdown;charset=utf-8'});const a=document.createElement('a');a.href=URL.createObjectURL(bl);a.download=nome+'.md';document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},600);};
 $('#sbRefs').onclick=()=>{$('#refsPanel').scrollIntoView({behavior:'smooth'});if($('#refsActions').hidden)gerarRefs();};
 $('#sbTrab').onclick=()=>{$('#trabPanel').scrollIntoView({behavior:'smooth'});gerarSintese();};
 
@@ -429,6 +478,7 @@ $('#go').onclick=buscar;
 $('#q').addEventListener('keydown',e=>{if(e.key==='Enter')buscar();});
 carregarBases();
 carregarEstilos();
+carregarEstruturas();
 iaStatus();
 </script>
 </body>

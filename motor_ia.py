@@ -52,6 +52,7 @@ def _google_key() -> str:
 # tenta o proximo — e como cada modelo tem cota gratuita SEPARADA, isso multiplica
 # o quanto da pra usar de graca. Resultado fica em cache.
 _GEMINI_CACHE = None
+_GEMINI_BOM = None  # ultimo modelo que respondeu OK (tenta ele primeiro = mais rapido)
 
 
 def _gemini_candidatos() -> list:
@@ -177,9 +178,10 @@ def _chat_gemini(system, prompt, modelo, json_mode, temperatura) -> str:
             except Exception:
                 raise RuntimeError("Gemini: resposta sem texto (pode ser filtro de conteudo)")
         ultimo = r.status_code
-        # 429/500/503 = limite/sobrecarga temporaria -> espera pouco e tenta de novo
-        # (se persistir, a camada de cima troca de modelo, que tem cota separada)
-        if r.status_code in (429, 500, 503) and tent < 2:
+        # 500/503 = sobrecarga passageira -> espera pouco e tenta de novo o mesmo.
+        # 429 (limite) NAO adianta repetir: a camada de cima troca de modelo na hora
+        # (cada modelo tem cota separada), o que e bem mais rapido.
+        if r.status_code in (500, 503) and tent < 2:
             time.sleep(1.0 * (tent + 1))  # 1s, 2s
             continue
         # 404 e outros -> definitivo (a camada acima troca de modelo no 404).
@@ -193,12 +195,18 @@ def _chat(system, prompt, modelo=None, json_mode=False, temperatura=0.2) -> str:
     if prov == 'gemini':
         if modelo and 'gemini' in str(modelo).lower():
             return _chat_gemini(system, prompt, str(modelo), json_mode, temperatura)
-        # tenta cada modelo candidato; pula os que estao indisponiveis (404) ou
-        # no limite/sobrecarregados (429/500/503) e vai pro proximo.
+        global _GEMINI_BOM
+        cands = _gemini_candidatos()
+        # comeca pelo modelo que funcionou por ultimo (evita re-testar os lotados)
+        if _GEMINI_BOM and _GEMINI_BOM in cands:
+            cands = [_GEMINI_BOM] + [c for c in cands if c != _GEMINI_BOM]
+        # tenta cada candidato; pula os indisponiveis (404) ou no limite (429/500/503)
         erro = None
-        for m in _gemini_candidatos():
+        for m in cands:
             try:
-                return _chat_gemini(system, prompt, m, json_mode, temperatura)
+                r = _chat_gemini(system, prompt, m, json_mode, temperatura)
+                _GEMINI_BOM = m  # lembra o que funcionou p/ acelerar as proximas
+                return r
             except RuntimeError as e:
                 erro = e
                 if any(c in str(e) for c in ('404', '429', '500', '503', 'sobrecarga')):

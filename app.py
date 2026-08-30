@@ -57,6 +57,41 @@ def estilos():
     return [{"id": e, "nome": mc.NOMES[e]} for e in mc.ESTILOS]
 
 
+# Estruturas de artigo (o usuario escolhe; a IA escreve secao por secao, ancorada).
+ESTRUTURAS = [
+    {"id": "sintese", "nome": "Síntese rápida (1 seção)", "secoes": [
+        {"titulo": "Análise crítica da evidência", "instrucao": ""}]},
+    {"id": "sistematica", "nome": "Revisão Sistemática (PRISMA)", "secoes": [
+        {"titulo": "Resumo", "instrucao": "Resumo estruturado e curto (contexto, objetivo, métodos, principais achados e conclusão), cerca de 200 palavras."},
+        {"titulo": "Introdução", "instrucao": "Contextualize o tema e a lacuna do conhecimento; termine enunciando o objetivo/pergunta de pesquisa (PICO)."},
+        {"titulo": "Métodos", "instrucao": "Escreva no estilo PRISMA: bases consultadas, estratégia de busca, critérios de inclusão/exclusão, processo de seleção e extração. É seção de metodologia — NÃO cite [n]."},
+        {"titulo": "Resultados", "instrucao": "Apresente as características e os achados dos estudos incluídos, agrupando por temas; sustente cada afirmação com [n]."},
+        {"titulo": "Discussão", "instrucao": "Interprete os achados, compare entre os estudos incluídos, aponte implicações para a prática e as limitações da evidência."},
+        {"titulo": "Conclusão", "instrucao": "Conclusão objetiva, ancorada nos achados; sem trazer dados novos."}]},
+    {"id": "narrativa", "nome": "Revisão Narrativa", "secoes": [
+        {"titulo": "Introdução", "instrucao": "Apresente o tema, sua relevância e o objetivo do texto."},
+        {"titulo": "Desenvolvimento", "instrucao": "Discuta o tema em blocos temáticos, integrando os estudos incluídos e citando por [n]."},
+        {"titulo": "Considerações finais", "instrucao": "Feche com uma síntese reflexiva ancorada nos achados."}]},
+    {"id": "integrativa", "nome": "Revisão Integrativa", "secoes": [
+        {"titulo": "Introdução", "instrucao": "Contexto, justificativa e questão norteadora."},
+        {"titulo": "Método", "instrucao": "Descreva as etapas da revisão integrativa (questão, busca nas bases, critérios, coleta). Seção de metodologia — NÃO cite [n]."},
+        {"titulo": "Resultados", "instrucao": "Caracterize os estudos incluídos e agrupe os achados em categorias temáticas, citando [n]."},
+        {"titulo": "Discussão", "instrucao": "Analise as categorias frente à literatura incluída, com implicações e limitações."},
+        {"titulo": "Conclusão", "instrucao": "Síntese conclusiva ancorada nos achados."}]},
+    {"id": "original", "nome": "Artigo Original", "secoes": [
+        {"titulo": "Introdução", "instrucao": "Contexto, lacuna e objetivo/hipótese."},
+        {"titulo": "Métodos", "instrucao": "Descreva o desenho, a fonte dos dados e a análise, com base nos estudos incluídos. Seção de metodologia — NÃO cite [n]."},
+        {"titulo": "Resultados", "instrucao": "Apresente os achados dos estudos incluídos de forma objetiva, com [n]."},
+        {"titulo": "Discussão", "instrucao": "Interprete, compare com a literatura incluída e aponte limitações."},
+        {"titulo": "Conclusão", "instrucao": "Conclusão objetiva ancorada nos achados."}]},
+]
+
+
+@app.get("/api/estruturas")
+def estruturas():
+    return ESTRUTURAS
+
+
 @app.post("/api/referencias")
 def referencias(req: RefsReq):
     itens = [mc.formatar(r, req.estilo) for r in req.refs]
