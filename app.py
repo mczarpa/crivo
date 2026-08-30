@@ -7,7 +7,7 @@ ficha, manuscrito) entra na etapa 2. Rodar:  python run.py
 from pathlib import Path
 
 from fastapi import FastAPI
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 
 import motor_busca as mb
@@ -132,6 +132,86 @@ def revistas():
     return REVISTAS
 
 
+class TituloReq(BaseModel):
+    refs: list[dict] = []
+    tema: str = ""
+    idioma: str = "pt"
+
+
+@app.post("/api/titulo")
+def titulo(req: TituloReq):
+    prov, _m, ok, _i = mia.provedor_ativo()
+    if not ok:
+        return {"titulo": req.tema}
+    try:
+        return {"titulo": mia.gerar_titulo(req.tema, req.refs, idioma=req.idioma)}
+    except Exception:
+        return {"titulo": req.tema}
+
+
+class DocxReq(BaseModel):
+    titulo: str = ""
+    texto: str = ""
+    figura_png: str = ""      # PNG em base64 (dataURL) do fluxograma PRISMA
+    figura_legenda: str = ""
+
+
+def _par_negrito(doc, texto):
+    """Adiciona um paragrafo convertendo **negrito** em runs em negrito."""
+    p = doc.add_paragraph()
+    for i, seg in enumerate(texto.split("**")):
+        if not seg:
+            continue
+        run = p.add_run(seg)
+        if i % 2 == 1:
+            run.bold = True
+    return p
+
+
+@app.post("/api/docx")
+def docx(req: DocxReq):
+    """Converte o artigo montado (markdown simples) num arquivo Word .docx."""
+    import io as _io
+    from docx import Document
+
+    doc = Document()
+    for raw in (req.texto or "").split("\n"):
+        s = raw.strip()
+        if s.startswith("## "):
+            doc.add_heading(s[3:].strip(), level=1)
+        elif s.startswith("# "):
+            doc.add_heading(s[2:].strip(), level=0)
+        elif len(s) > 2 and s.startswith("*") and s.endswith("*"):
+            p = doc.add_paragraph()
+            r = p.add_run(s.strip("*"))
+            r.italic = True
+        elif not s:
+            doc.add_paragraph("")
+        else:
+            _par_negrito(doc, raw.rstrip())
+
+    # figura PRISMA embutida (se enviada)
+    if req.figura_png:
+        try:
+            import base64
+            from docx.shared import Inches
+            b64 = req.figura_png.split(",", 1)[-1]
+            img = _io.BytesIO(base64.b64decode(b64))
+            doc.add_heading(req.figura_legenda or "Figura 1 — Fluxograma PRISMA 2020", level=1)
+            doc.add_picture(img, width=Inches(6.0))
+        except Exception:
+            pass
+
+    buf = _io.BytesIO()
+    doc.save(buf)
+    nome = "".join(c for c in (req.titulo or "artigo")[:60] if c.isalnum() or c in " -_") or "artigo"
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": f'attachment; filename="{nome}.docx"'},
+    )
+
+
 @app.post("/api/referencias")
 def referencias(req: RefsReq):
     itens = [mc.formatar(r, req.estilo) for r in req.refs]
@@ -144,6 +224,7 @@ class RascunhoReq(BaseModel):
     tema: str = ""
     secao: str = "Análise crítica da evidência"
     instrucoes: str = ""
+    idioma: str = "pt"
 
 
 @app.post("/api/rascunhar")
@@ -156,7 +237,8 @@ def rascunhar(req: RascunhoReq):
                 "erro": "IA desligada — configure a chave (GOOGLE_API_KEY ou GROQ_API_KEY)."}
     pico = {"desfecho": req.tema}
     try:
-        texto = mia.rascunhar_secao(req.secao, pico, req.refs, texto_extra=req.instrucoes)
+        texto = mia.rascunhar_secao(req.secao, pico, req.refs,
+                                    texto_extra=req.instrucoes, idioma=req.idioma)
         return {"secao": req.secao, "texto": texto}
     except Exception as e:
         return {"secao": req.secao, "texto": "", "erro": str(e)}
@@ -193,6 +275,78 @@ def buscar(req: BuscaReq):
     res["descritores"] = desc
     res["query"] = query
     return res
+
+
+def _autores(r):
+    return r.get("autores_est") or r.get("autores") or []
+
+
+def gerar_ris(refs):
+    """Formato RIS (Zotero, Mendeley, EndNote)."""
+    out = []
+    for r in refs:
+        out.append("TY  - JOUR")
+        out.append("TI  - " + (r.get("titulo") or ""))
+        for a in _autores(r):
+            out.append("AU  - " + str(a))
+        if r.get("ano"):
+            out.append("PY  - " + str(r["ano"]))
+        if r.get("revista"):
+            out.append("JO  - " + str(r["revista"]))
+        if r.get("volume"):
+            out.append("VL  - " + str(r["volume"]))
+        if r.get("numero"):
+            out.append("IS  - " + str(r["numero"]))
+        if r.get("paginas"):
+            out.append("SP  - " + str(r["paginas"]))
+        if r.get("doi"):
+            out.append("DO  - " + str(r["doi"]))
+        if r.get("url"):
+            out.append("UR  - " + str(r["url"]))
+        if r.get("resumo"):
+            out.append("AB  - " + str(r["resumo"]))
+        out.append("ER  - ")
+        out.append("")
+    return "\n".join(out)
+
+
+def gerar_bibtex(refs):
+    """Formato BibTeX (LaTeX, Zotero, Mendeley)."""
+    blocos = []
+    for i, r in enumerate(refs, 1):
+        aut = _autores(r)
+        base = (aut[0].split(",")[0].split()[0] if aut else "ref")
+        key = ("".join(c for c in base if c.isalnum()) or "ref") + str(r.get("ano") or "") + str(i)
+        f = ["  title = {" + (r.get("titulo") or "") + "}"]
+        if aut:
+            f.append("  author = {" + " and ".join(str(a) for a in aut) + "}")
+        if r.get("ano"):
+            f.append("  year = {" + str(r["ano"]) + "}")
+        if r.get("revista"):
+            f.append("  journal = {" + str(r["revista"]) + "}")
+        if r.get("volume"):
+            f.append("  volume = {" + str(r["volume"]) + "}")
+        if r.get("numero"):
+            f.append("  number = {" + str(r["numero"]) + "}")
+        if r.get("paginas"):
+            f.append("  pages = {" + str(r["paginas"]) + "}")
+        if r.get("doi"):
+            f.append("  doi = {" + str(r["doi"]) + "}")
+        blocos.append("@article{" + key + ",\n" + ",\n".join(f) + "\n}")
+    return "\n\n".join(blocos)
+
+
+class ExportReq(BaseModel):
+    refs: list[dict] = []
+    formato: str = "ris"
+
+
+@app.post("/api/exportar")
+def exportar(req: ExportReq):
+    fmt = (req.formato or "ris").lower()
+    if fmt == "bibtex":
+        return {"formato": "bibtex", "ext": "bib", "texto": gerar_bibtex(req.refs)}
+    return {"formato": "ris", "ext": "ris", "texto": gerar_ris(req.refs)}
 
 
 @app.get("/")

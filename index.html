@@ -191,6 +191,8 @@ body.hasbar{padding-bottom:72px}
     <div class="refs-actions" id="refsActions" hidden>
       <button class="fbtn" id="copyRefs">Copiar</button>
       <button class="fbtn" id="dlRefs">Baixar .txt</button>
+      <button class="fbtn" id="exRis">RIS (Zotero/Mendeley)</button>
+      <button class="fbtn" id="exBib">BibTeX</button>
       <span class="refs-hint" id="refsCount"></span>
     </div>
     <pre class="refs-out" id="refsOut"></pre>
@@ -202,15 +204,33 @@ body.hasbar{padding-bottom:72px}
       <div class="refs-tools">
         <select class="sel" id="estrutura" title="Estrutura do artigo"></select>
         <select class="sel" id="revista" title="Revista-alvo (aplica as normas)"></select>
+        <select class="sel" id="idioma" title="Idioma do artigo">
+          <option value="pt">Português</option>
+          <option value="en">English</option>
+          <option value="es">Español</option>
+        </select>
         <button class="btn" id="genSintese">Escrever com IA</button>
       </div>
     </div>
     <div class="refs-actions" id="trabActions" hidden>
       <button class="fbtn" id="copyTrab">Copiar</button>
-      <button class="fbtn" id="dlTrab">Baixar .txt</button>
+      <button class="fbtn" id="dlDocx">Baixar Word (.docx)</button>
+      <button class="fbtn" id="dlTrab">Baixar .md</button>
       <span class="refs-hint" id="trabHint"></span>
     </div>
     <pre class="refs-out" id="trabOut"></pre>
+  </section>
+
+  <section class="refs" id="prismaPanel" hidden>
+    <div class="refs-head">
+      <div><span class="eyebrow">Fluxograma</span><h2>PRISMA 2020</h2></div>
+      <div class="refs-tools"><button class="btn" id="genPrisma">Gerar fluxograma</button></div>
+    </div>
+    <div class="refs-actions" id="prismaActions" hidden>
+      <button class="fbtn" id="dlPrismaSvg">Baixar imagem (SVG)</button>
+      <span class="refs-hint" id="prismaHint"></span>
+    </div>
+    <div id="prismaOut" style="overflow:auto;background:#fff;border-radius:10px;padding:8px"></div>
   </section>
 </main>
 
@@ -218,6 +238,7 @@ body.hasbar{padding-bottom:72px}
   <div class="stepbar-in">
     <span class="stepbar-info"><b id="stepN">0</b> incluído(s) — próximo passo:</span>
     <div class="stepbar-btns">
+      <button class="btn ghost sm" id="sbPrisma">Fluxograma PRISMA ↓</button>
       <button class="btn ghost sm" id="sbRefs">Referências ↓</button>
       <button class="btn primary sm" id="sbTrab" hidden>Montar o trabalho ↓</button>
     </div>
@@ -388,6 +409,56 @@ $('#genRefs').onclick=gerarRefs;
 $('#estilo').onchange=()=>{if(!$('#refsActions').hidden)gerarRefs();};
 $('#copyRefs').onclick=()=>{navigator.clipboard.writeText($('#refsOut').textContent||'').then(()=>{const b=$('#copyRefs');b.textContent='Copiado!';setTimeout(()=>b.textContent='Copiar',1500);});};
 $('#dlRefs').onclick=()=>{const bl=new Blob([$('#refsOut').textContent||''],{type:'text/plain;charset=utf-8'});const a=document.createElement('a');a.href=URL.createObjectURL(bl);a.download='referencias.txt';document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},600);};
+async function exportarRefs(fmt,ext){
+  const inc=incluidos();if(!inc.length){alert('Inclua artigos primeiro.');return;}
+  try{
+    const r=await fetch('/api/exportar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({refs:inc,formato:fmt})});
+    const d=await r.json();const bl=new Blob([d.texto||''],{type:'text/plain;charset=utf-8'});
+    const a=document.createElement('a');a.href=URL.createObjectURL(bl);a.download='referencias.'+(d.ext||ext);document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},600);
+  }catch(e){alert('Falha ao exportar: '+(e.message||e));}
+}
+$('#exRis').onclick=()=>exportarRefs('ris','ris');
+$('#exBib').onclick=()=>exportarRefs('bibtex','bib');
+
+// ---- Fluxograma PRISMA 2020 ----
+function prismaCounts(){
+  const dados=state.dados||[];const total=dados.length;const uniq=dados.filter(x=>!x.dup);
+  const porBase={};dados.forEach(r=>{const b=r.fonte||'?';porBase[b]=(porBase[b]||0)+1;});
+  const S=s=>uniq.filter(r=>statusDe(r)===s).length;
+  return {total,unicos:uniq.length,dup:total-uniq.length,porBase,inc:S('incluir'),exc:S('excluir'),talvez:S('talvez'),pend:S('pendente')};
+}
+function buildPrismaSVG(c){
+  const W=760,H=520;const E=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const per=Object.entries(c.porBase).map(([k,v])=>E(k)+': '+v).join('   ');
+  const box=(x,y,w,h,f)=>'<rect x="'+x+'" y="'+y+'" width="'+w+'" height="'+h+'" rx="8" fill="'+(f||'#fff')+'" stroke="#3a3a3a" stroke-width="1.5"/>';
+  const T=(x,y,t,o)=>{o=o||{};return '<text x="'+x+'" y="'+y+'" text-anchor="'+(o.a||'start')+'" font-size="'+(o.s||13)+'" fill="'+(o.c||'#1b1b1b')+'"'+(o.w?' font-weight="'+o.w+'"':'')+'>'+t+'</text>';};
+  const wrap=(x,y,t,max,lh,o)=>{const ws=String(t).split(' ');let ln='',yy=y,out='';ws.forEach(w=>{if((ln+' '+w).length>max){out+=T(x,yy,E(ln),o);yy+=lh;ln=w;}else ln=ln?ln+' '+w:w;});out+=T(x,yy,E(ln),o);return{svg:out,y:yy};};
+  const arr=(x1,y1,x2,y2)=>'<line x1="'+x1+'" y1="'+y1+'" x2="'+x2+'" y2="'+y2+'" stroke="#3a3a3a" stroke-width="1.6" marker-end="url(#ah)"/>';
+  const ph=(y,l)=>box(18,y,26,80,'#efe6d6')+'<text x="31" y="'+(y+40)+'" text-anchor="middle" font-size="12" font-weight="700" fill="#5b4326" transform="rotate(-90 31 '+(y+40)+')">'+l+'</text>';
+  let s='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 '+W+' '+H+'" width="'+W+'" height="'+H+'" font-family="Georgia,serif">';
+  s+='<defs><marker id="ah" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 Z" fill="#3a3a3a"/></marker></defs>';
+  s+='<rect width="'+W+'" height="'+H+'" fill="#fff"/>';
+  s+=T(W/2,28,'Fluxograma PRISMA 2020',{a:'middle',s:17,w:'700'});
+  s+=ph(58,'Identificação');s+=box(64,58,364,82);
+  const b1=wrap(80,82,'Registros identificados nas bases de dados (n = '+c.total+')',54,17,{s:13});s+=b1.svg;s+=T(80,b1.y+20,E(per),{s:11,c:'#555'});
+  s+=box(470,58,272,58);s+=T(484,84,'Duplicados removidos',{s:13});s+=T(484,104,'(n = '+c.dup+')',{s:13});s+=arr(428,88,470,88);
+  s+=ph(198,'Triagem');s+=arr(246,140,246,198);s+=box(64,198,364,68);
+  s+=wrap(80,226,'Registros triados por título e resumo (n = '+c.unicos+')',54,17,{s:13}).svg;
+  s+=box(470,198,272,100);s+=T(484,224,'Registros excluídos na triagem',{s:12.5});s+=T(484,244,'(n = '+c.exc+')',{s:13});s+=T(484,270,'Em análise: '+c.talvez+' talvez · '+c.pend+' pendentes',{s:11,c:'#555'});s+=arr(428,232,470,232);
+  s+=ph(356,'Incluído');s+=arr(246,266,246,356);s+=box(64,356,364,70,'#eaf3ea');
+  s+=wrap(80,386,'Estudos incluídos na síntese (n = '+c.inc+')',54,17,{s:13,w:'700'}).svg;
+  s+=T(64,470,'Bases: PubMed · Europe PMC · Crossref · Semantic Scholar. Triagem por título/resumo.',{s:10.5,c:'#666'});
+  return s+'</svg>';
+}
+function gerarPrisma(){
+  const p=$('#prismaPanel');p.hidden=false;const c=prismaCounts();
+  if(!c.total){$('#prismaOut').innerHTML='<div class="hint" style="padding:14px">Faça uma busca primeiro.</div>';$('#prismaActions').hidden=true;return;}
+  $('#prismaOut').innerHTML=buildPrismaSVG(c);$('#prismaActions').hidden=false;
+  $('#prismaHint').textContent=c.total+' identificados · '+c.unicos+' triados · '+c.inc+' incluídos';
+}
+$('#genPrisma').onclick=gerarPrisma;
+$('#sbPrisma').onclick=()=>{gerarPrisma();$('#prismaPanel').scrollIntoView({behavior:'smooth'});};
+$('#dlPrismaSvg').onclick=()=>{const svg=$('#prismaOut').innerHTML;if(!svg.trim())return;const bl=new Blob([svg],{type:'image/svg+xml;charset=utf-8'});const a=document.createElement('a');a.href=URL.createObjectURL(bl);a.download='prisma.svg';document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},600);};
 
 // ---- Artigo (o trabalho): escreve seção por seção seguindo a estrutura escolhida ----
 async function carregarEstruturas(){
@@ -415,10 +486,16 @@ async function gerarSintese(){
   const est=estruturaAtual();
   if(!est){out.textContent='Carregando estruturas… tente de novo em instantes.';return false;}
   const rev=revistaAtual();
+  const idioma=($('#idioma')&&$('#idioma').value)||'pt';
   const regrasRev=(rev&&rev.id!=='generico'&&rev.regras)?rev.regras:'';
   if(rev&&rev.estilo)$('#estilo').value=rev.estilo;
   const btn=$('#genSintese');btn.disabled=true;$('#trabActions').hidden=true;
-  const titulo=(state.tema||'').trim();
+  let titulo=(state.tema||'').trim();
+  if(est.secoes.length>1 && state.iaOk){
+    out.textContent='Definindo o título científico…';
+    try{const rt=await fetch('/api/titulo',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({refs:inc,tema:titulo,idioma})});const dt=await rt.json();if(dt.titulo)titulo=dt.titulo;}catch(e){}
+  }
+  state.artigoTitulo=titulo;
   const partes=[];
   if(titulo && est.secoes.length>1)partes.push('# '+titulo+'\n');
   if(regrasRev && est.secoes.length>1)partes.push('*Formatado para: '+rev.nome+(rev.qualis?' ('+rev.qualis+')':'')+' — confira as Instruções aos Autores da revista antes de submeter.*\n');
@@ -440,7 +517,7 @@ async function gerarSintese(){
       let dd={};
       try{
         const r=await fetch('/api/rascunhar',{method:'POST',headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({refs:inc,tema:titulo,secao:sec.titulo,instrucoes:instr})});
+          body:JSON.stringify({refs:inc,tema:titulo,secao:sec.titulo,instrucoes:instr,idioma})});
         dd=await r.json();
       }catch(e){dd={erro:e.message||e};}
       if(est.secoes.length>1)partes.push('## '+sec.titulo+'\n\n'+(dd.texto||'[não gerado: '+esc(dd.erro||'erro')+']')+'\n');
@@ -486,7 +563,23 @@ async function fazerTudo(d){
 }
 $('#genSintese').onclick=gerarSintese;
 $('#copyTrab').onclick=()=>{navigator.clipboard.writeText($('#trabOut').textContent||'').then(()=>{const b=$('#copyTrab');b.textContent='Copiado!';setTimeout(()=>b.textContent='Copiar',1500);});};
-$('#dlTrab').onclick=()=>{const nome=((state.tema||'artigo').trim().replace(/[^\wçãõáéíóúâêô -]/gi,'').slice(0,50)||'artigo');const bl=new Blob([$('#trabOut').textContent||''],{type:'text/markdown;charset=utf-8'});const a=document.createElement('a');a.href=URL.createObjectURL(bl);a.download=nome+'.md';document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},600);};
+function nomeArq(){return ((state.artigoTitulo||state.tema||'artigo').trim().replace(/[^\wçãõáéíóúâêô -]/gi,'').slice(0,50)||'artigo');}
+$('#dlTrab').onclick=()=>{const bl=new Blob([$('#trabOut').textContent||''],{type:'text/markdown;charset=utf-8'});const a=document.createElement('a');a.href=URL.createObjectURL(bl);a.download=nomeArq()+'.md';document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},600);};
+function svgParaPng(svgStr){
+  return new Promise((resolve)=>{
+    if(!svgStr||svgStr.indexOf('<svg')<0){resolve('');return;}
+    try{const blob=new Blob([svgStr],{type:'image/svg+xml;charset=utf-8'});const url=URL.createObjectURL(blob);const img=new Image();
+      img.onload=()=>{const s=2,w=img.width||760,h=img.height||520;const cv=document.createElement('canvas');cv.width=w*s;cv.height=h*s;const cx=cv.getContext('2d');cx.fillStyle='#fff';cx.fillRect(0,0,cv.width,cv.height);cx.scale(s,s);cx.drawImage(img,0,0);URL.revokeObjectURL(url);try{resolve(cv.toDataURL('image/png'));}catch(e){resolve('');}};
+      img.onerror=()=>{URL.revokeObjectURL(url);resolve('');};img.src=url;
+    }catch(e){resolve('');}
+  });
+}
+$('#dlDocx').onclick=async()=>{const texto=$('#trabOut').textContent||'';if(!texto.trim())return;const b=$('#dlDocx');const old=b.textContent;b.textContent='Gerando…';b.disabled=true;
+  let figura='';const svg=$('#prismaOut')?$('#prismaOut').innerHTML:'';
+  if(svg&&svg.indexOf('<svg')>=0){try{figura=await svgParaPng(svg);}catch(e){}}
+  try{const r=await fetch('/api/docx',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({titulo:(state.artigoTitulo||state.tema||'artigo'),texto,figura_png:figura})});
+    if(!r.ok)throw new Error('HTTP '+r.status);const bl=await r.blob();const a=document.createElement('a');a.href=URL.createObjectURL(bl);a.download=nomeArq()+'.docx';document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},600);
+  }catch(e){alert('Falha ao gerar o Word: '+(e.message||e));}finally{b.textContent=old;b.disabled=false;}};
 $('#sbRefs').onclick=()=>{$('#refsPanel').scrollIntoView({behavior:'smooth'});if($('#refsActions').hidden)gerarRefs();};
 $('#sbTrab').onclick=()=>{$('#trabPanel').scrollIntoView({behavior:'smooth'});gerarSintese();};
 

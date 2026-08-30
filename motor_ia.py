@@ -302,7 +302,9 @@ def extrair_ficha(ref, modelo=None) -> dict:
 
 
 # ---------------- 5. Rascunho do manuscrito (ANCORADO) ----------------
-def rascunhar_secao(secao, pico, refs_incluidas, texto_extra='', modelo=None) -> str:
+def rascunhar_secao(secao, pico, refs_incluidas, texto_extra='', modelo=None, idioma='pt') -> str:
+    lang = {'pt': 'português', 'en': 'inglês (English)',
+            'es': 'espanhol (Español)'}.get(idioma, 'português')
     fontes = []
     for i, r in enumerate(refs_incluidas, 1):
         aut = (r.get('autores') or ['(sem autor)'])
@@ -313,18 +315,48 @@ def rascunhar_secao(secao, pico, refs_incluidas, texto_extra='', modelo=None) ->
                       f"{resumo_ficha or (r.get('resumo','')[:400])}")
     bloco = "\n".join(fontes) if fontes else "(nenhuma referencia incluida ainda)"
     system = (
-        "Voce escreve secoes de um artigo de revisao em portugues cientifico. "
-        "REGRA ABSOLUTA: use APENAS as referencias numeradas fornecidas e cite como [n]. "
-        "NUNCA invente referencias, dados, numeros ou autores que nao estejam nas fontes. "
-        "Se faltar base para uma afirmacao, escreva '[LACUNA: falta evidencia]'. "
-        "Nao repita a lista de referencias; escreva o texto corrido da secao.")
+        f"Voce e redator cientifico. Escreve UMA secao de um artigo de revisao em "
+        f"{lang} academico, impessoal e fluido, pronto para submissao. Escreva TODO o "
+        f"texto em {lang}. REGRAS: "
+        "(1) Use APENAS as referencias numeradas fornecidas e cite como [n]; NUNCA "
+        "invente referencias, dados, numeros, autores ou descritores que nao estejam "
+        "nas fontes. "
+        "(2) Se faltar base para uma afirmacao, escreva '[LACUNA: falta evidencia]'. "
+        "(3) Escreva SO o conteudo da secao, em texto corrido; NAO repita o titulo da "
+        "secao, NAO se dirija ao leitor, NAO escreva frases meta como 'nesta secao', "
+        "'a seguir' ou 'como solicitado'. "
+        "(4) Nao gere a lista de referencias no fim. "
+        "(5) Se a secao for um Resumo estruturado, use os rotulos em negrito no idioma "
+        "do texto (ex.: **Objetivo:**/**Objective:**/**Objetivo:**, "
+        "**Metodos:**/**Methods:**/**Metodos:**, "
+        "**Resultados:**/**Results:**/**Resultados:**, "
+        "**Conclusao:**/**Conclusion:**/**Conclusion:**) e finalize com uma linha de "
+        "descritores no idioma (Descritores:/Descriptors:/Descriptores:) com 3 a 5 "
+        "termos DeCS/MeSH separados por ponto e virgula.")
     prompt = (
         f"Secao a escrever: {secao}\n"
         f"PICO da revisao: {json.dumps(pico, ensure_ascii=False)}\n"
         f"{('Instrucoes extras: ' + texto_extra) if texto_extra else ''}\n\n"
         f"FONTES (so pode usar estas, citando por [n]):\n{bloco}\n\n"
-        f"Escreva a secao '{secao}'.")
+        f"Escreva a secao '{secao}' em {lang}.")
     return _chat(system, prompt, modelo, json_mode=False, temperatura=0.35)
+
+
+# ---------------- 6. Titulo cientifico ----------------
+def gerar_titulo(tema, refs_incluidas, modelo=None, idioma='pt') -> str:
+    lang = {'pt': 'português', 'en': 'inglês (English)',
+            'es': 'espanhol (Español)'}.get(idioma, 'português')
+    system = (f"Voce cria titulos cientificos. Responda SO o titulo: sem aspas, sem "
+              f"ponto final, ate 20 palavras, especifico e informativo, em {lang}.")
+    prompt = (f"Tema da revisao: {tema}\n"
+              f"Numero de estudos incluidos: {len(refs_incluidas or [])}\n"
+              "Crie um titulo cientifico para um artigo de revisao sobre esse tema.")
+    try:
+        t = _chat(system, prompt, modelo, json_mode=False, temperatura=0.4)
+    except Exception:
+        t = ''
+    t = (t or tema or '').strip().strip('"').strip().rstrip('.').strip()
+    return t or (tema or 'Artigo')
 
 
 if __name__ == '__main__':
