@@ -12,6 +12,7 @@ from pydantic import BaseModel
 
 import motor_busca as mb
 import motor_ia as mia
+import motor_cita as mc
 
 BASE = Path(__file__).parent
 app = FastAPI(title="Crivo")
@@ -44,6 +45,46 @@ def triar(req: TriarReq):
         return mia.triar_referencia(req.ref, req.criterios_inc, req.criterios_exc, pico)
     except Exception as e:
         return {"decisao": "pendente", "motivo": f"erro IA: {e}", "criterio": ""}
+
+
+class RefsReq(BaseModel):
+    refs: list[dict] = []
+    estilo: str = "vancouver"
+
+
+@app.get("/api/estilos")
+def estilos():
+    return [{"id": e, "nome": mc.NOMES[e]} for e in mc.ESTILOS]
+
+
+@app.post("/api/referencias")
+def referencias(req: RefsReq):
+    itens = [mc.formatar(r, req.estilo) for r in req.refs]
+    return {"estilo": req.estilo, "n": len(itens), "itens": itens,
+            "texto": mc.formatar_lista(req.refs, req.estilo)}
+
+
+class RascunhoReq(BaseModel):
+    refs: list[dict] = []
+    tema: str = ""
+    secao: str = "Análise crítica da evidência"
+    instrucoes: str = ""
+
+
+@app.post("/api/rascunhar")
+def rascunhar(req: RascunhoReq):
+    """Escreve uma seção do trabalho ANCORADA nos artigos incluídos (só cita o
+    que foi lido; nada inventado). Precisa da IA ligada."""
+    prov, _mod, ok, _info = mia.provedor_ativo()
+    if not ok:
+        return {"secao": req.secao, "texto": "",
+                "erro": "IA desligada — configure a chave (GOOGLE_API_KEY ou GROQ_API_KEY)."}
+    pico = {"desfecho": req.tema}
+    try:
+        texto = mia.rascunhar_secao(req.secao, pico, req.refs, texto_extra=req.instrucoes)
+        return {"secao": req.secao, "texto": texto}
+    except Exception as e:
+        return {"secao": req.secao, "texto": "", "erro": str(e)}
 
 
 @app.get("/api/bases")

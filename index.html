@@ -113,6 +113,20 @@ header{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--paper
 .fbtn.ia{background:var(--gold-glow);border-color:var(--accent);color:var(--accent-ink)}
 .fbtn.ia:disabled{opacity:.6;cursor:default}
 @media(max-width:620px){.critgrid{grid-template-columns:1fr}}
+.refs{margin:30px 0 90px}
+.refs-head{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap;border-bottom:1px solid var(--line);padding-bottom:14px}
+.refs-head h2{font-size:22px;margin-top:4px}
+.refs-tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.sel{font-family:var(--sans);font-size:14px;border:1px solid var(--line-strong);border-radius:9px;padding:9px 12px;background:var(--surface);color:var(--ink)}
+.refs-actions{display:flex;gap:8px;align-items:center;margin:14px 0 0}
+.refs-out{white-space:pre-wrap;word-break:break-word;font-family:var(--sans);font-size:14px;line-height:1.65;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px;color:var(--ink-soft);max-height:540px;overflow:auto;margin-top:14px}
+.refs-hint{font-size:13px;color:var(--muted)}
+.stepbar{position:fixed;left:0;right:0;bottom:0;z-index:60;background:color-mix(in srgb,var(--surface) 95%,transparent);backdrop-filter:blur(12px) saturate(1.3);border-top:1px solid var(--line);box-shadow:0 -8px 28px rgba(20,35,30,.10)}
+.stepbar-in{max-width:1000px;margin:0 auto;padding:11px 22px;display:flex;align-items:center;gap:14px;justify-content:space-between;flex-wrap:wrap}
+.stepbar-info{font-size:14px;color:var(--muted);display:flex;align-items:center;gap:8px}
+.stepbar-info b{font-family:var(--serif);font-size:22px;color:var(--inc);line-height:1}
+.stepbar-btns{display:flex;gap:8px;flex-wrap:wrap}
+body.hasbar{padding-bottom:72px}
 .empty{text-align:center;color:var(--muted);padding:60px 20px}
 .spin{width:22px;height:22px;border:3px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:sp 1s linear infinite;display:inline-block;vertical-align:-5px}
 @keyframes sp{to{transform:rotate(360deg)}}
@@ -162,7 +176,49 @@ header{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--paper
 
   <div id="status"></div>
   <section class="results" id="results"></section>
+
+  <section class="refs" id="refsPanel" hidden>
+    <div class="refs-head">
+      <div>
+        <span class="eyebrow">Próximo passo</span>
+        <h2>Referências dos incluídos</h2>
+      </div>
+      <div class="refs-tools">
+        <select class="sel" id="estilo"></select>
+        <button class="btn" id="genRefs">Gerar referências</button>
+      </div>
+    </div>
+    <div class="refs-actions" id="refsActions" hidden>
+      <button class="fbtn" id="copyRefs">Copiar</button>
+      <button class="fbtn" id="dlRefs">Baixar .txt</button>
+      <span class="refs-hint" id="refsCount"></span>
+    </div>
+    <pre class="refs-out" id="refsOut"></pre>
+  </section>
+
+  <section class="refs" id="trabPanel" hidden>
+    <div class="refs-head">
+      <div><span class="eyebrow">O trabalho</span><h2>Síntese da evidência</h2></div>
+      <div class="refs-tools"><button class="btn" id="genSintese">Escrever com IA</button></div>
+    </div>
+    <div class="refs-actions" id="trabActions" hidden>
+      <button class="fbtn" id="copyTrab">Copiar</button>
+      <button class="fbtn" id="dlTrab">Baixar .txt</button>
+      <span class="refs-hint" id="trabHint"></span>
+    </div>
+    <pre class="refs-out" id="trabOut"></pre>
+  </section>
 </main>
+
+<div class="stepbar" id="stepbar" hidden>
+  <div class="stepbar-in">
+    <span class="stepbar-info"><b id="stepN">0</b> incluído(s) — próximo passo:</span>
+    <div class="stepbar-btns">
+      <button class="btn ghost sm" id="sbRefs">Referências ↓</button>
+      <button class="btn primary sm" id="sbTrab" hidden>Montar o trabalho ↓</button>
+    </div>
+  </div>
+</div>
 
 <script>
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
@@ -231,18 +287,21 @@ function render(d){
   $('#status').innerHTML=
     '<div class="summary"><div><span class="big">'+unicos+'</span> <span class="k">artigos únicos ('+total+' brutos)</span></div>'+
     '<div class="filters" id="filters">'+
-      (state.iaOk?'<button class="fbtn ia" id="triarIA">Triar pendentes com IA</button>':'')+
+      (state.iaOk?'<button class="fbtn ia" id="fazerTudo">🪄 Fazer tudo com IA</button>'
+                 :'<span class="fbtn" style="opacity:.7;cursor:default" title="Configure a chave de IA no servidor">🔒 IA desligada</span>')+
       ['todas','pendente','incluir','talvez','excluir'].map(f=>'<button class="fbtn" data-f="'+f+'"'+(state.filtro===f?' aria-current="true"':'')+'>'+f+'</button>').join('')+
     '</div></div>'+warn+
-    '<div class="hint mono">bases: '+esc(porBase)+' · query: '+esc(d.query||'')+'</div>';
+    '<div class="hint mono">bases: '+esc(porBase)+' · query: '+esc(d.query||'')+'</div>'+
+    '<div class="hint" style="margin-top:7px">Próximo passo: marque artigos em <b>Incluir</b>'+(state.iaOk?' — ou toque em <b>Fazer tudo com IA</b> pra selecionar e escrever sozinho':'')+', e role até <b>Referências</b>'+(state.iaOk?' e <b>Síntese</b>':'')+'.</div>';
   $$('#filters .fbtn[data-f]').forEach(b=>b.onclick=()=>{state.filtro=b.dataset.f;render(d);});
-  const tb=$('#triarIA');if(tb){tb.disabled=state.iaBusy;tb.onclick=()=>triarIA(d);}
+  const tb=$('#fazerTudo');if(tb){tb.disabled=state.iaBusy;tb.onclick=()=>fazerTudo(d);}
   desenhar();
 }
 
 function statusDe(r){return state.decisoes[r.chave_dedup]||'pendente';}
 function desenhar(){
   const R=$('#results');
+  atualizarRefs();
   let lista=state.dados.filter(r=>!r.dup);
   if(state.filtro!=='todas')lista=lista.filter(r=>statusDe(r)===state.filtro);
   if(!lista.length){R.innerHTML='<div class="empty">Nada aqui ainda. Faça uma busca ou troque o filtro.</div>';return;}
@@ -290,9 +349,86 @@ async function triarIA(d){
   render(d);
 }
 
+// ---- Referências (próximo passo) ----
+function incluidos(){return state.dados.filter(r=>!r.dup && statusDe(r)==='incluir');}
+function atualizarRefs(){
+  const inc=incluidos();const n=inc.length;
+  const p=$('#refsPanel');const t=$('#trabPanel');const sb=$('#stepbar');
+  if(n){
+    p.hidden=false; if(t) t.hidden=!state.iaOk;
+    if(sb){sb.hidden=false;document.body.classList.add('hasbar');$('#stepN').textContent=n;$('#sbTrab').hidden=!state.iaOk;}
+  }else{
+    p.hidden=true; if(t) t.hidden=true; $('#refsOut').textContent='';$('#refsActions').hidden=true;
+    if(sb){sb.hidden=true;document.body.classList.remove('hasbar');}
+  }
+}
+async function carregarEstilos(){
+  try{const r=await fetch('/api/estilos');const es=await r.json();
+    $('#estilo').innerHTML=es.map(e=>'<option value="'+e.id+'">'+esc(e.nome)+'</option>').join('');
+  }catch(e){}
+}
+async function gerarRefs(){
+  const inc=incluidos();if(!inc.length)return;
+  const estilo=$('#estilo').value||'vancouver';
+  const out=$('#refsOut');out.textContent='Gerando…';
+  try{
+    const r=await fetch('/api/referencias',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({refs:inc,estilo})});
+    const d=await r.json();
+    out.textContent=d.texto||'(sem referências)';
+    $('#refsActions').hidden=false;
+    $('#refsCount').textContent=d.n+' referência(s) · '+estilo;
+  }catch(e){out.textContent='Falha ao gerar: '+esc(e.message||e);}
+}
+$('#genRefs').onclick=gerarRefs;
+$('#estilo').onchange=()=>{if(!$('#refsActions').hidden)gerarRefs();};
+$('#copyRefs').onclick=()=>{navigator.clipboard.writeText($('#refsOut').textContent||'').then(()=>{const b=$('#copyRefs');b.textContent='Copiado!';setTimeout(()=>b.textContent='Copiar',1500);});};
+$('#dlRefs').onclick=()=>{const bl=new Blob([$('#refsOut').textContent||''],{type:'text/plain;charset=utf-8'});const a=document.createElement('a');a.href=URL.createObjectURL(bl);a.download='referencias.txt';document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},600);};
+
+// ---- Síntese (o trabalho) + modo automático ----
+async function gerarSintese(){
+  const inc=incluidos();const out=$('#trabOut');$('#trabPanel').hidden=false;
+  if(!inc.length){out.textContent='Inclua artigos primeiro (ou use "Fazer tudo com IA").';$('#trabActions').hidden=true;return false;}
+  out.textContent='Lendo os incluídos e escrevendo a síntese (IA)…';$('#trabActions').hidden=true;
+  try{
+    const r=await fetch('/api/rascunhar',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({refs:inc,tema:state.tema,secao:'Análise crítica da evidência'})});
+    const dd=await r.json();
+    if(dd.texto){out.textContent=dd.texto;$('#trabActions').hidden=false;$('#trabHint').textContent=inc.length+' artigo(s) · síntese ancorada';return true;}
+    out.textContent='Não deu pra escrever: '+esc(dd.erro||'erro');return false;
+  }catch(e){out.textContent='Falha: '+esc(e.message||e);return false;}
+}
+async function fazerTudo(d){
+  if(state.iaBusy)return;state.iaBusy=true;
+  const btn=$('#fazerTudo');if(btn)btn.disabled=true;
+  const inc=($('#critInc').value||'').split('\n').map(s=>s.trim()).filter(Boolean);
+  const exc=($('#critExc').value||'').split('\n').map(s=>s.trim()).filter(Boolean);
+  const pend=state.dados.filter(r=>!r.dup && statusDe(r)==='pendente');
+  for(let i=0;i<pend.length;i++){
+    const r=pend[i];if(btn)btn.textContent='Lendo e triando '+(i+1)+'/'+pend.length+'…';
+    try{
+      const resp=await fetch('/api/triar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ref:{titulo:r.titulo,resumo:r.resumo},criterios_inc:inc,criterios_exc:exc,pico:{desfecho:state.tema}})});
+      const dd=await resp.json();
+      state.decisoes[r.chave_dedup]=dd.decisao||'pendente';
+      state.motivos[r.chave_dedup]={motivo:dd.motivo||'',criterio:dd.criterio||''};
+      desenhar();
+    }catch(e){}
+  }
+  if(btn)btn.textContent='Montando o trabalho…';
+  await gerarSintese();
+  state.iaBusy=false;render(d);
+  const tp=$('#trabPanel');if(tp&&!tp.hidden)tp.scrollIntoView({behavior:'smooth'});
+}
+$('#genSintese').onclick=gerarSintese;
+$('#copyTrab').onclick=()=>{navigator.clipboard.writeText($('#trabOut').textContent||'').then(()=>{const b=$('#copyTrab');b.textContent='Copiado!';setTimeout(()=>b.textContent='Copiar',1500);});};
+$('#dlTrab').onclick=()=>{const bl=new Blob([$('#trabOut').textContent||''],{type:'text/plain;charset=utf-8'});const a=document.createElement('a');a.href=URL.createObjectURL(bl);a.download='sintese.txt';document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},600);};
+$('#sbRefs').onclick=()=>{$('#refsPanel').scrollIntoView({behavior:'smooth'});if($('#refsActions').hidden)gerarRefs();};
+$('#sbTrab').onclick=()=>{$('#trabPanel').scrollIntoView({behavior:'smooth'});gerarSintese();};
+
 $('#go').onclick=buscar;
 $('#q').addEventListener('keydown',e=>{if(e.key==='Enter')buscar();});
 carregarBases();
+carregarEstilos();
 iaStatus();
 </script>
 </body>

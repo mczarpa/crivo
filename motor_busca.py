@@ -88,10 +88,13 @@ def _parse_pubmed_xml(xml_txt) -> list:
         if jt is not None and jt.text:
             revista = jt.text
         autores = []
+        autores_est = []
         for a in art.findall('.//AuthorList/Author'):
             sob = a.find('LastName'); ini = a.find('Initials')
             if sob is not None and sob.text:
-                autores.append((sob.text + ' ' + (ini.text if ini is not None and ini.text else '')).strip())
+                inic = ini.text if ini is not None and ini.text else ''
+                autores.append((sob.text + ' ' + inic).strip())
+                autores_est.append({'sn': sob.text, 'in': inic})
         doi = ''
         for aid in art.findall('.//ArticleIdList/ArticleId'):
             if aid.get('IdType') == 'doi' and aid.text:
@@ -99,8 +102,12 @@ def _parse_pubmed_xml(xml_txt) -> list:
         pmid_el = art.find('.//PMID')
         pmid = pmid_el.text if pmid_el is not None else ''
         kws = [_limpar(k.text) for k in art.findall('.//KeywordList/Keyword') if k.text]
+        vol = art.findtext('.//JournalIssue/Volume') or ''
+        num = art.findtext('.//JournalIssue/Issue') or ''
+        pag = art.findtext('.//Pagination/MedlinePgn') or ''
         reg = {'fonte': 'PubMed', 'doi': doi, 'titulo': titulo, 'autores': autores,
-               'ano': ano, 'revista': revista, 'resumo': resumo,
+               'autores_est': autores_est, 'ano': ano, 'revista': revista, 'resumo': resumo,
+               'volume': vol, 'numero': num, 'paginas': pag,
                'url': f'https://pubmed.ncbi.nlm.nih.gov/{pmid}/' if pmid else '',
                'keywords': kws}
         if titulo:
@@ -122,10 +129,20 @@ def buscar_europepmc(query, limite=25) -> list:
     out = []
     for it in res:
         autores = []
+        autores_est = []
         for a in (it.get('authorList', {}) or {}).get('author', []) or []:
-            nome = a.get('fullName') or a.get('lastName') or ''
+            sn = a.get('lastName') or ''
+            inic = a.get('initials') or ''
+            if not sn:
+                fn = a.get('fullName') or ''
+                partes = fn.split()
+                if partes:
+                    sn = partes[0]; inic = inic or ''.join(partes[1:])
+            nome = a.get('fullName') or (sn + ' ' + inic).strip()
             if nome:
                 autores.append(nome)
+            if sn:
+                autores_est.append({'sn': sn, 'in': inic})
         kw = (it.get('keywordList', {}) or {}).get('keyword', []) or []
         doi = it.get('doi', '') or ''
         pmid = it.get('pmid', '')
@@ -134,10 +151,12 @@ def buscar_europepmc(query, limite=25) -> list:
             url_art = 'https://doi.org/' + doi
         elif pmid:
             url_art = f'https://pubmed.ncbi.nlm.nih.gov/{pmid}/'
+        ji = it.get('journalInfo', {}) or {}
         reg = {'fonte': 'Europe PMC', 'doi': doi, 'titulo': _limpar(it.get('title', '')),
-               'autores': autores, 'ano': str(it.get('pubYear', '') or ''),
-               'revista': (it.get('journalInfo', {}) or {}).get('journal', {}).get('title', '')
-                          or it.get('journalTitle', ''),
+               'autores': autores, 'autores_est': autores_est, 'ano': str(it.get('pubYear', '') or ''),
+               'revista': (ji.get('journal', {}) or {}).get('title', '') or it.get('journalTitle', ''),
+               'volume': str(ji.get('volume', '') or ''), 'numero': str(ji.get('issue', '') or ''),
+               'paginas': it.get('pageInfo', '') or '',
                'resumo': _limpar(it.get('abstractText', '')), 'url': url_art,
                'keywords': [_limpar(k) for k in kw]}
         if reg['titulo']:
@@ -151,7 +170,7 @@ def buscar_crossref(query, limite=25) -> list:
     try:
         r = requests.get(url, timeout=TIMEOUT, params={
             "query": query, "rows": limite, "mailto": EMAIL_CONTATO,
-            "select": "DOI,title,author,issued,container-title,abstract,URL,subject"})
+            "select": "DOI,title,author,issued,container-title,abstract,URL,subject,volume,issue,page"})
         r.raise_for_status()
         itens = r.json().get("message", {}).get("items", [])
     except Exception as e:
@@ -163,18 +182,26 @@ def buscar_crossref(query, limite=25) -> list:
         if not titulo:
             continue
         autores = []
+        autores_est = []
         for a in it.get('author', []) or []:
-            nome = (a.get('given', '') + ' ' + a.get('family', '')).strip()
+            fam = a.get('family', '') or ''
+            giv = a.get('given', '') or ''
+            nome = (giv + ' ' + fam).strip()
             if nome:
                 autores.append(nome)
+            if fam:
+                inic = ''.join(w[0] for w in giv.replace('.', ' ').split() if w)
+                autores_est.append({'sn': fam, 'in': inic})
         ano = ''
         try:
             ano = str(it['issued']['date-parts'][0][0])
         except Exception:
             ano = ''
         reg = {'fonte': 'Crossref', 'doi': it.get('DOI', '') or '', 'titulo': titulo,
-               'autores': autores, 'ano': ano,
+               'autores': autores, 'autores_est': autores_est, 'ano': ano,
                'revista': _limpar(' '.join(it.get('container-title', []) or [])),
+               'volume': str(it.get('volume', '') or ''), 'numero': str(it.get('issue', '') or ''),
+               'paginas': it.get('page', '') or '',
                'resumo': _limpar(it.get('abstract', '')), 'url': it.get('URL', '') or '',
                'keywords': it.get('subject', []) or []}
         out.append(reg)
@@ -199,10 +226,18 @@ def buscar_semanticscholar(query, limite=25) -> list:
     out = []
     for it in dados:
         autores = [a.get('name', '') for a in (it.get('authors') or []) if a.get('name')]
+        autores_est = []
+        for nome in autores:
+            partes = nome.split()
+            if len(partes) >= 2:
+                autores_est.append({'sn': partes[-1], 'in': ''.join(w[0] for w in partes[:-1] if w)})
+            elif partes:
+                autores_est.append({'sn': partes[0], 'in': ''})
         doi = ((it.get('externalIds') or {}).get('DOI') or '')
         reg = {'fonte': 'Semantic Scholar', 'doi': doi, 'titulo': _limpar(it.get('title', '')),
-               'autores': autores, 'ano': str(it.get('year', '') or ''),
+               'autores': autores, 'autores_est': autores_est, 'ano': str(it.get('year', '') or ''),
                'revista': it.get('venue', '') or '', 'resumo': _limpar(it.get('abstract', '')),
+               'volume': '', 'numero': '', 'paginas': '',
                'url': it.get('url', '') or (('https://doi.org/' + doi) if doi else ''),
                'keywords': []}
         if reg['titulo']:
